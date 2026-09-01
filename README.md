@@ -18,8 +18,11 @@ TouchDRO Desktop is a touch-friendly Java Swing digital readout (DRO) for a thre
 - USB serial connection to TouchDroid hardware through `jSerialComm`.
 
 
+## Screenshots
 
+![TouchDRO Desktop dashboard](assets/touchdro1.png)
 
+![Reference list manager](assets/touchdro2.png)
 
 ## Hardware Protocol
 
@@ -79,9 +82,6 @@ java --enable-native-access=ALL-UNNAMED -cp ".\target\classes;$driver" com.drode
 
 ## Screenshots
 
-![TouchDRO Desktop dashboard](assets/touchdro-dashboard.svg)
-
-![Reference list manager](assets/reference-list-manager.svg)
 
 ## Project Layout
 
