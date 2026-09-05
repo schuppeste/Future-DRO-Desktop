@@ -1,3 +1,19 @@
+# Future-DRO-Desktop
+Java based Desktop Milling DRO, Bluetooth or USB (Ongoing)
+
+# Overview
+
+- Auto Connect USB Serial Port (Modes: Auto, Gui Select, CMD Parameter)
+- Language Configuration (CMD Paramter)
+- Fullscreen Mode (CMD Parameter)
+- Cross Compiled Native for all Desktop OS (MacOS, Linux-x86, linux-arm, Windows)
+- Raspberry Compatible, Touchscreen Compatible
+- Diameter/Radius Tool Compensation
+- Load and Save Reference Lists (CSV Compatible Files)
+- Reference List Features.. Fill out missing Axes with Zeros or Previous List Entry
+- Fast switching between Delta or Live Values for Main View  
+- Arrow Buttons to set next or Previous Step on Reference List
+
 # Touch friendly DRO Desktop Application
 
 Future DRO Desktop is a touch-friendly Java Swing digital readout (DRO) for a three-axis milling or drilling machine. It displays live X, Y, and Z positions from TouchDroid ESP32 hardware and provides reference-point workflows for manually guided machining.
@@ -70,6 +86,40 @@ Use the `LIST` menu item to manage multiple files without a system file browser.
 The dependency is declared in `pom.xml`. For direct compilation, place `jSerialComm-2.11.0.jar` in `lib/`.
 
 ## Run
+
+### All-platforms JAR
+
+Use the versioned all-platforms JAR from the `target/` directory. Java 17 or later is required. Start it from a terminal so that startup and serial-port errors remain visible:
+
+Windows PowerShell:
+
+```powershell
+java --enable-native-access=ALL-UNNAMED -jar .\target\dro-java-desktop-1.0.0-beta-allplatforms.jar
+```
+
+Linux and macOS:
+
+```bash
+java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta-allplatforms.jar
+```
+
+The `--enable-native-access=ALL-UNNAMED` option allows `jSerialComm` to load its native serial-port library without native-access warnings on newer Java versions. If the downloaded JAR has a different version in its filename, replace the filename in the command accordingly.
+
+Do not extract the JAR before starting it. The all-platforms JAR contains the Java classes and the native `jSerialComm` libraries for the supported operating systems and CPU architectures.
+
+### Serial access troubleshooting
+
+- Close other programs that may already use the selected serial port.
+- On Windows, check the assigned `COM` port in Device Manager and select the same port in the application.
+- On Linux, the user needs access to the serial device, usually through the `dialout` group:
+
+	```bash
+	sudo usermod -aG dialout "$USER"
+	```
+
+	Log out and back in after changing the group membership.
+- On macOS, select the `/dev/cu.*` device belonging to the ESP32. Do not select a device that is already in use by another application.
+- If Java reports `UnsatisfiedLinkError` or `Could not find jSerialComm`, make sure the complete all-platforms JAR was downloaded and start it with the command above.
 
 ### Maven
 
