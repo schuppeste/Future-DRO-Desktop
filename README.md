@@ -103,6 +103,26 @@ Linux and macOS:
 java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta-allplatforms.jar
 ```
 
+### Program arguments
+
+The application supports these startup arguments:
+
+- `--fullscreen`: start the application in fullscreen mode.
+- `--lang=de` or `--lang de`: select the user interface language, for example `de` or `en`.
+- `--port=COM3` or `--port COM3`: connect directly to the specified serial port. Use the port name shown by the operating system, such as `COM3` on Windows or `/dev/ttyUSB0` on Linux.
+
+Example for Windows with fullscreen mode, German language, COM3, and serial native access enabled:
+
+```powershell
+java --enable-native-access=ALL-UNNAMED -jar .\target\dro-java-desktop-1.0.0-beta-allplatforms.jar --fullscreen --lang=de --port=COM3
+```
+
+Equivalent example for Linux or macOS:
+
+```bash
+java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta-allplatforms.jar --fullscreen --lang=en --port=/dev/ttyUSB0
+```
+
 The `--enable-native-access=ALL-UNNAMED` option allows `jSerialComm` to load its native serial-port library without native-access warnings on newer Java versions. If the downloaded JAR has a different version in its filename, replace the filename in the command accordingly.
 
 Do not extract the JAR before starting it. The all-platforms JAR contains the Java classes and the native `jSerialComm` libraries for the supported operating systems and CPU architectures.
