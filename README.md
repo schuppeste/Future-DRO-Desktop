@@ -1,7 +1,7 @@
 # Future-DRO-Desktop
 Java based Desktop Milling DRO, Bluetooth or USB (Ongoing)
 
-# TouchDRO Desktop
+# Touch friendly DRO Desktop Application
 
 Future DRO Desktop is a touch-friendly Java Swing digital readout (DRO) for a three-axis milling or drilling machine. It displays live X, Y, and Z positions from TouchDroid ESP32 hardware and provides reference-point workflows for manually guided machining.
 
