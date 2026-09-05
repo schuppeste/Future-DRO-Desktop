@@ -1,22 +1,18 @@
-# Future-DRO-Desktop
-Java based Desktop Milling DRO, Bluetooth or USB (Ongoing)
-
-# Overview
-
-- Auto Connect USB Serial Port (Modes: Auto, Gui Select, CMD Parameter)
-- Language Configuration (CMD Paramter)
-- Fullscreen Mode (CMD Parameter)
-- Cross Compiled Native for all Desktop OS (MacOS, Linux-x86, linux-arm, Windows)
-- Raspberry Compatible, Touchscreen Compatible
-- Diameter/Radius Tool Compensation
-- Load and Save Reference Lists (CSV Compatible Files)
-- Reference List Features.. Fill out missing Axes with Zeros or Previous List Entry
-- Fast switching between Delta or Live Values for Main View  
-- Arrow Buttons to set next or Previous Step on Reference List
-
 # Touch friendly DRO Desktop Application
 
 Future DRO Desktop is a touch-friendly Java Swing digital readout (DRO) for a three-axis milling or drilling machine. It displays live X, Y, and Z positions from TouchDroid ESP32 hardware and provides reference-point workflows for manually guided machining.
+
+## License and Contact
+
+This project is free software licensed under the [GNU General Public License version 3 or later](https://www.gnu.org/licenses/gpl-3.0.html). You may fork it, modify it, and share your changes on GitHub under the terms of the GPL.
+
+For questions, collaboration, or commercial licensing discussions, use the [GitHub Issues](https://github.com/schuppeste/Future-DRO-Desktop/issues) page. The project name and logo are not granted as a trademark license by the GPL.
+
+See [LICENSE](LICENSE) for the project license and the [official GPL-3.0-or-later text](https://www.gnu.org/licenses/gpl-3.0.txt).
+
+The seven-segment display uses DSEG7 Classic by Keshikan, licensed under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL). See `src/main/resources/fonts/DSEG-LICENSE.txt` for the included font license.
+
+The application includes `jSerialComm 2.11.0` for USB serial communication. jSerialComm is licensed under the [GNU Lesser General Public License version 3](https://github.com/Fazecast/jSerialComm/blob/master/LICENSE). The dependency and its platform-specific native libraries are included in the all-platforms JAR.
 
 ## Features
 
