@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.prefs.Preferences;
 import java.util.stream.Stream;
+import java.util.function.IntConsumer;
 
 public class DROFrame extends JFrame {
     private static final String[] MENU_BUTTONS = {
@@ -1149,16 +1150,17 @@ public class DROFrame extends JFrame {
         tableContainer.add(new JScrollPane(pointTable), BorderLayout.CENTER);
         dialog.add(tableContainer, BorderLayout.CENTER);
 
-        JPanel actions = new JPanel(new GridLayout(1, 7, 6, 0));
+        JPanel actions = new JPanel(new GridLayout(1, 9, 6, 0));
         actions.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
         actions.setBackground(Color.BLACK);
-        JButton addButton = new JButton(Messages.get("button.pointAdd"));
-        addButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
-        addButton.addActionListener(e -> {
+        IntConsumer insertPoint = insertIndex -> {
             try {
                 Vector3 point = createReferencePoint(xField, yField, zField);
-                dro.addReferenceListPoint(point);
-                pointModel.addRow(referenceTableRow(pointModel.getRowCount(), point));
+                dro.insertReferenceListPoint(insertIndex, point);
+                pointModel.insertRow(insertIndex, referenceTableRow(insertIndex, point));
+                for (int i = insertIndex + 1; i < pointModel.getRowCount(); i++) {
+                    setReferenceTableRow(pointModel, i, dro.getReferenceList().get(i));
+                }
                 xField.setText("");
                 yField.setText("");
                 zField.setText("");
@@ -1166,10 +1168,25 @@ public class DROFrame extends JFrame {
             } catch (NumberFormatException ex) {
                 statusLabel.setText(Messages.get("status.xyzInvalid"));
             }
+        };
+        JButton beforeButton = new JButton(Messages.get("button.pointBefore"));
+        beforeButton.addActionListener(e -> {
+            int selected = pointTable.getSelectedRow();
+            insertPoint.accept(selected >= 0 ? selected : pointModel.getRowCount());
         });
-        saveReferencePointAction = addButton::doClick;
-        JButton previousButton = createEmptyCoordinateSubmitButton(Messages.get("button.usePrevious"), EmptyCoordinateMode.PREVIOUS, addButton);
-        JButton zeroButton = createEmptyCoordinateSubmitButton(Messages.get("button.useZero"), EmptyCoordinateMode.ZERO, addButton);
+        JButton afterButton = new JButton(Messages.get("button.pointAfter"));
+        afterButton.addActionListener(e -> {
+            int selected = pointTable.getSelectedRow();
+            insertPoint.accept(selected >= 0 ? selected + 1 : pointModel.getRowCount());
+        });
+        JButton endButton = new JButton(Messages.get("button.pointEnd"));
+        endButton.addActionListener(e -> insertPoint.accept(pointModel.getRowCount()));
+        for (JButton button : new JButton[]{beforeButton, afterButton, endButton}) {
+            button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        }
+        saveReferencePointAction = afterButton::doClick;
+        JButton previousButton = createEmptyCoordinateSubmitButton(Messages.get("button.usePrevious"), EmptyCoordinateMode.PREVIOUS, afterButton);
+        JButton zeroButton = createEmptyCoordinateSubmitButton(Messages.get("button.useZero"), EmptyCoordinateMode.ZERO, afterButton);
         JButton updateButton = new JButton(Messages.get("button.change"));
         updateButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
         updateButton.addActionListener(e -> {
@@ -1231,8 +1248,10 @@ public class DROFrame extends JFrame {
                 dialog.dispose();
             }
         });
-        dialog.getRootPane().setDefaultButton(addButton);
-        actions.add(addButton);
+        dialog.getRootPane().setDefaultButton(afterButton);
+        actions.add(beforeButton);
+        actions.add(afterButton);
+        actions.add(endButton);
         actions.add(previousButton);
         actions.add(zeroButton);
         actions.add(updateButton);

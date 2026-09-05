@@ -97,6 +97,10 @@ public class DRO {
         referenceList.add(point.copy());
     }
 
+    public void insertReferenceListPoint(int index, Vector3 point) {
+        referenceList.add(index, point.copy());
+    }
+
     public void removeReferenceListPoint(int index) {
         referenceList.remove(index);
     }
