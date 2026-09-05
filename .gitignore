@@ -1,0 +1,16 @@
+# Build output
+target/
+out/
+*.class
+
+# Local dependency jars (resolved via Maven from pom.xml)
+lib/*.jar
+
+# Runtime-generated reference lists
+referenzlisten/*.csv
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
