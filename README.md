@@ -45,9 +45,9 @@ The application includes `jSerialComm 2.11.0` for USB serial communication. jSer
 
 ## Screenshots
 
-![TouchDRO Desktop dashboard](assets/touchdro1.png)
+<img width="3814" height="1994" alt="Future_DRO_Desktop2" src="https://github.com/user-attachments/assets/8e406e0d-b2ea-4c32-ad21-49d294d2c3f0" />
+<img width="3810" height="1984" alt="Future DRO Desktop" src="https://github.com/user-attachments/assets/cdf79f23-6692-4a95-a86b-1e58ff5949ed" />
 
-![Reference list manager](assets/touchdro2.png)
 
 ## Hardware Protocol
 
