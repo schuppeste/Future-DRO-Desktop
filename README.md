@@ -45,9 +45,6 @@ The application includes `jSerialComm 2.11.4` for USB serial communication. jSer
 
 ## Screenshots
 
-<img width="3814" height="1994" alt="Future_DRO_Desktop2" src="https://github.com/user-attachments/assets/8e406e0d-b2ea-4c32-ad21-49d294d2c3f0" />
-<img width="3810" height="1984" alt="Future DRO Desktop" src="https://github.com/user-attachments/assets/cdf79f23-6692-4a95-a86b-1e58ff5949ed" />
-
 
 ## Hardware Protocol
 
@@ -56,6 +53,9 @@ The ESP32 firmware sends one telemetry line every 50 ms through USB serial at `1
 ```text
 X=<micrometres>,Y=<micrometres>,Z=<micrometres>
 ```
+<img width="2541" height="1352" alt="touchdro2" src="https://github.com/user-attachments/assets/7664eb6b-80f1-442c-9c74-860ba70ca62b" />
+<img width="2548" height="1347" alt="touchdro1" src="https://github.com/user-attachments/assets/7f7ea2f5-2626-4b95-a466-802072a7bbc8" />
+
 
 Example:
 
