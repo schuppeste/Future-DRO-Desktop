@@ -1,0 +1,86 @@
+name: Build Native Installers
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            command: .\packaging\build-jpackage.ps1 -Type exe
+            shell: pwsh
+            artifact: windows-x64-installer
+          - name: Linux x64
+            os: ubuntu-latest
+            command: ./packaging/build-jpackage.sh deb
+            shell: bash
+            artifact: linux-x64-package
+          - name: macOS Intel
+            os: macos-13
+            command: ./packaging/build-jpackage.sh dmg
+            shell: bash
+            artifact: macos-intel-disk-image
+          - name: macOS Apple Silicon
+            os: macos-14
+            command: ./packaging/build-jpackage.sh dmg
+            shell: bash
+            artifact: macos-arm64-disk-image
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Install Windows installer tools
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: choco install wixtoolset --no-progress --yes
+
+      - name: Build native package
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.command }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/jpackage/*
+          if-no-files-found: error
+
+  release:
+    name: Publish Release Downloads
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download native packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-files/*

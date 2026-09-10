@@ -29,8 +29,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.prefs.Preferences;
 import java.util.stream.Stream;
 import java.util.function.IntConsumer;
@@ -46,7 +48,7 @@ public class DROFrame extends JFrame {
     private final DRO dro = new DRO();
     private final SerialDroReceiver serialReceiver = new SerialDroReceiver();
     private final Preferences preferences = Preferences.userNodeForPackage(DROFrame.class);
-    private final DecimalFormat fmt = new DecimalFormat("0.###");
+    private final DecimalFormat fmt = new DecimalFormat("000.000", DecimalFormatSymbols.getInstance(Locale.US));
 
     private final SevenSegmentLabel xLabel = new SevenSegmentLabel();
     private final SevenSegmentLabel yLabel = new SevenSegmentLabel();
@@ -86,6 +88,8 @@ public class DROFrame extends JFrame {
     private JTextField referenceTableIndexField;
     private int referenceEntryStep;
     private int referenceListIndex = -1;
+    private boolean referencePointLoadedForChange;
+    private JButton selectedInsertionButton;
     private MainDisplayMode mainDisplayMode = MainDisplayMode.IST;
     private boolean toolCompensationEnabled;
     private double toolRadiusMm;
@@ -106,6 +110,14 @@ public class DROFrame extends JFrame {
 
     private enum MainDisplayMode {
         IST, DIFF
+    }
+
+    private enum InsertionPosition {
+        BEFORE, AFTER, END
+    }
+
+    private enum ReferenceAction {
+        PREVIOUS, ZERO, UPDATE, DELETE, CLEAR, START
     }
 
     public DROFrame() {
@@ -859,9 +871,9 @@ public class DROFrame extends JFrame {
             case IST -> actual;
         };
 
-        xLabel.setText(String.format(java.util.Locale.US, "%07.3f", displayed.x));
-        yLabel.setText(String.format(java.util.Locale.US, "%07.3f", displayed.y));
-        zLabel.setText(String.format(java.util.Locale.US, "%07.3f", displayed.z));
+        xLabel.setText(formatActionValue(displayed.x));
+        yLabel.setText(formatActionValue(displayed.y));
+        zLabel.setText(formatActionValue(displayed.z));
         targetXLabel.setText(formatActionValue(target == null ? 0 : target.x));
         targetYLabel.setText(formatActionValue(target == null ? 0 : target.y));
         targetZLabel.setText(formatActionValue(target == null ? 0 : target.z));
@@ -875,7 +887,7 @@ public class DROFrame extends JFrame {
     }
 
     private String formatActionValue(double value) {
-        return String.format(java.util.Locale.US, "%07.3f", value);
+        return fmt(value);
     }
 
     private Vector3 getActiveReferencePoint() {
@@ -1134,11 +1146,8 @@ public class DROFrame extends JFrame {
         pointTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && pointTable.getSelectedRow() >= 0) {
                 int selectedIndex = pointTable.getSelectedRow();
-                Vector3 point = dro.getReferenceList().get(selectedIndex);
                 referenceListIndex = selectedIndex;
-                xField.setText(formatActionValue(point.x));
-                yField.setText(formatActionValue(point.y));
-                zField.setText(formatActionValue(point.z));
+                referencePointLoadedForChange = false;
                 statusLabel.setText(Messages.get("status.referencePoint.active", selectedIndex + 1));
                 updateReferenceIndexLabel();
                 refreshDisplay();
@@ -1169,27 +1178,33 @@ public class DROFrame extends JFrame {
                 statusLabel.setText(Messages.get("status.xyzInvalid"));
             }
         };
-        JButton beforeButton = new JButton(Messages.get("button.pointBefore"));
-        beforeButton.addActionListener(e -> {
-            int selected = pointTable.getSelectedRow();
-            insertPoint.accept(selected >= 0 ? selected : pointModel.getRowCount());
+        JButton beforeButton = createReferenceActionButton("\u25C0\u2502", Messages.get("button.pointBefore"));
+        beforeButton.addActionListener(e -> selectInsertionButton(beforeButton));
+        JButton afterButton = createReferenceActionButton("\u2502\u25B6", Messages.get("button.pointAfter"));
+        afterButton.addActionListener(e -> selectInsertionButton(afterButton));
+        JButton endButton = createReferenceActionButton("\u2502\u2502\u21E5", Messages.get("button.pointEnd"));
+        endButton.addActionListener(e -> {
+            selectInsertionButton(endButton);
+            scrollReferenceTableToEnd(pointTable);
         });
-        JButton afterButton = new JButton(Messages.get("button.pointAfter"));
-        afterButton.addActionListener(e -> {
+        Runnable insertAtSelectedPosition = () -> {
             int selected = pointTable.getSelectedRow();
-            insertPoint.accept(selected >= 0 ? selected + 1 : pointModel.getRowCount());
-        });
-        JButton endButton = new JButton(Messages.get("button.pointEnd"));
-        endButton.addActionListener(e -> insertPoint.accept(pointModel.getRowCount()));
-        for (JButton button : new JButton[]{beforeButton, afterButton, endButton}) {
-            button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
-        }
-        saveReferencePointAction = afterButton::doClick;
-        JButton previousButton = createEmptyCoordinateSubmitButton(Messages.get("button.usePrevious"), EmptyCoordinateMode.PREVIOUS, afterButton);
-        JButton zeroButton = createEmptyCoordinateSubmitButton(Messages.get("button.useZero"), EmptyCoordinateMode.ZERO, afterButton);
-        JButton updateButton = new JButton(Messages.get("button.change"));
-        updateButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
-        updateButton.addActionListener(e -> {
+            if (selectedInsertionButton == beforeButton) {
+                insertPoint.accept(selected >= 0 ? selected : pointModel.getRowCount());
+            } else if (selectedInsertionButton == endButton) {
+                insertPoint.accept(pointModel.getRowCount());
+                scrollReferenceTableToEnd(pointTable);
+            } else {
+                insertPoint.accept(selected >= 0 ? selected + 1 : pointModel.getRowCount());
+            }
+        };
+        selectInsertionButton(afterButton);
+        saveReferencePointAction = insertAtSelectedPosition;
+        JButton previousButton = createEmptyCoordinateSubmitButton("\u21B6", Messages.get("button.usePrevious"), EmptyCoordinateMode.PREVIOUS,
+            insertAtSelectedPosition);
+        JButton zeroButton = createEmptyCoordinateSubmitButton("0", Messages.get("button.useZero"), EmptyCoordinateMode.ZERO,
+            insertAtSelectedPosition);
+        Runnable updateSelectedReference = () -> {
             int selected = pointTable.getSelectedRow();
             if (selected < 0) {
                 statusLabel.setText(Messages.get("status.referencePoint.selectToChange"));
@@ -1200,15 +1215,34 @@ public class DROFrame extends JFrame {
                 dro.updateReferenceListPoint(selected, point);
                 setReferenceTableRow(pointModel, selected, point);
                 referenceListIndex = selected;
+                referencePointLoadedForChange = false;
+                xField.setText("");
+                yField.setText("");
+                zField.setText("");
                 statusLabel.setText(Messages.get("status.referencePoint.changed", selected + 1));
                 updateReferenceIndexLabel();
                 refreshDisplay();
             } catch (NumberFormatException ex) {
                 statusLabel.setText(Messages.get("status.xyzInvalid"));
             }
+        };
+        JButton updateButton = createReferenceActionButton("\u270E", Messages.get("button.change"));
+        updateButton.addActionListener(e -> {
+            int selected = pointTable.getSelectedRow();
+            if (selected < 0) {
+                statusLabel.setText(Messages.get("status.referencePoint.selectToChange"));
+                return;
+            }
+            if (!referencePointLoadedForChange) {
+                Vector3 point = dro.getReferenceList().get(selected);
+                xField.setText(formatActionValue(point.x));
+                yField.setText(formatActionValue(point.y));
+                zField.setText(formatActionValue(point.z));
+                referencePointLoadedForChange = true;
+                selectReferenceField(xField);
+            }
         });
-        JButton removeButton = new JButton(Messages.get("button.delete"));
-        removeButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        JButton removeButton = createReferenceActionButton("\u232B", Messages.get("button.delete"));
         removeButton.addActionListener(e -> {
             int selected = pointTable.getSelectedRow();
             if (selected >= 0) {
@@ -1223,8 +1257,7 @@ public class DROFrame extends JFrame {
                 updateReferenceIndexLabel();
             }
         });
-        JButton clearButton = new JButton(Messages.get("button.clear"));
-        clearButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        JButton clearButton = createReferenceActionButton("\u2715", Messages.get("button.clear"));
         clearButton.addActionListener(e -> {
             dro.clearReferenceList();
             pointModel.setRowCount(0);
@@ -1233,11 +1266,12 @@ public class DROFrame extends JFrame {
             zField.setText("");
             pointTable.clearSelection();
             referenceListIndex = -1;
+            referencePointLoadedForChange = false;
             selectedReferenceField = null;
             updateReferenceIndexLabel();
+            refreshDisplay();
         });
-        JButton startButton = new JButton(Messages.get("button.start"));
-        startButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        JButton startButton = createReferenceActionButton("\u25B6", Messages.get("button.start"));
         startButton.addActionListener(e -> {
             if (!dro.getReferenceList().isEmpty()) {
                 referenceListIndex = 0;
@@ -1268,7 +1302,13 @@ public class DROFrame extends JFrame {
         zField.addFocusListener(createReferenceFieldFocusListener(zField));
         xField.addActionListener(e -> handleReferenceKeypadInput("ENT"));
         yField.addActionListener(e -> handleReferenceKeypadInput("ENT"));
-        zField.addActionListener(e -> saveReferencePointAction.run());
+        zField.addActionListener(e -> {
+            if (referencePointLoadedForChange) {
+                updateSelectedReference.run();
+            } else {
+                saveReferencePointAction.run();
+            }
+        });
         dialog.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent event) {
@@ -1303,15 +1343,40 @@ public class DROFrame extends JFrame {
         return cell;
     }
 
-    private JButton createEmptyCoordinateSubmitButton(String label, EmptyCoordinateMode mode, JButton addButton) {
-        JButton button = new JButton(label);
-        button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+    private JButton createEmptyCoordinateSubmitButton(String icon, String tooltip, EmptyCoordinateMode mode, Runnable addAction) {
+        JButton button = createReferenceActionButton(icon, tooltip);
         button.addActionListener(e -> {
             emptyCoordinateMode = mode;
-            addButton.doClick();
+            addAction.run();
             emptyCoordinateMode = EmptyCoordinateMode.FREE;
         });
         return button;
+    }
+
+    private JButton createReferenceActionButton(String icon, String tooltip) {
+        JButton button = new JButton(icon);
+        button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 24));
+        button.setToolTipText(tooltip);
+        return button;
+    }
+
+    private void selectInsertionButton(JButton selected) {
+        setSelectedButton(selectedInsertionButton, selected);
+        selectedInsertionButton = selected;
+    }
+
+    private void setSelectedButton(JButton previous, JButton selected) {
+        Color activeColor = new Color(230, 145, 48);
+        if (previous != null) {
+            previous.setOpaque(true);
+            previous.setContentAreaFilled(true);
+            previous.setBackground(UIManager.getColor("Button.background"));
+            previous.repaint();
+        }
+        selected.setOpaque(true);
+        selected.setContentAreaFilled(true);
+        selected.setBackground(activeColor);
+        selected.repaint();
     }
 
     private Vector3 createReferencePoint(JTextField xField, JTextField yField, JTextField zField) {
@@ -1338,6 +1403,8 @@ public class DROFrame extends JFrame {
 
     private void clearReferenceEditorState() {
         selectedReferenceField = null;
+        referencePointLoadedForChange = false;
+        selectedInsertionButton = null;
         referenceXField = null;
         referenceYField = null;
         referenceZField = null;
@@ -1485,6 +1552,14 @@ public class DROFrame extends JFrame {
         }
     }
 
+    private void scrollReferenceTableToEnd(JTable table) {
+        int lastRow = table.getRowCount() - 1;
+        if (lastRow >= 0) {
+            table.setRowSelectionInterval(lastRow, lastRow);
+            table.scrollRectToVisible(table.getCellRect(lastRow, 0, true));
+        }
+    }
+
     private void setDisplayMode(MainDisplayMode mode) {
         mainDisplayMode = mode;
         Color activeColor = new Color(230, 145, 48);
@@ -1514,5 +1589,213 @@ public class DROFrame extends JFrame {
 
     private String fmt(double value) {
         return fmt.format(value);
+    }
+
+    private static final class ReferenceActionIcon implements Icon {
+        private static final int SIZE = 32;
+        private static final Color GREEN = new Color(118, 219, 160);
+        private static final Color BLUE = new Color(104, 196, 255);
+        private static final Color ORANGE = new Color(232, 132, 45);
+        private static final Color GRAY = new Color(88, 97, 105);
+        private final ReferenceAction action;
+
+        private ReferenceActionIcon(ReferenceAction action) {
+            this.action = action;
+        }
+
+        @Override
+        public int getIconWidth() {
+            return SIZE;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return SIZE;
+        }
+
+        @Override
+        public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            int availableSize = Math.min(component.getWidth() - 8, component.getHeight() - 8);
+            int drawSize = Math.max(16, Math.min(40, availableSize));
+            Graphics2D graphics2d = (Graphics2D) graphics.create();
+            try {
+                graphics2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                graphics2d.translate((component.getWidth() - drawSize) / 2.0, (component.getHeight() - drawSize) / 2.0);
+                graphics2d.scale(drawSize / (double) SIZE, drawSize / (double) SIZE);
+                graphics2d.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                switch (action) {
+                    case PREVIOUS -> drawPreviousValues(graphics2d);
+                    case ZERO -> drawZeroValues(graphics2d);
+                    case UPDATE -> drawUpdate(graphics2d);
+                    case DELETE -> drawDelete(graphics2d);
+                    case CLEAR -> drawClear(graphics2d);
+                    case START -> drawStart(graphics2d);
+                }
+            } finally {
+                graphics2d.dispose();
+            }
+        }
+
+        private void drawPreviousValues(Graphics2D graphics) {
+            graphics.setColor(GRAY);
+            graphics.drawLine(13, 7, 27, 7);
+            graphics.drawLine(13, 16, 27, 16);
+            graphics.drawLine(13, 25, 27, 25);
+            graphics.setColor(GREEN);
+            graphics.drawLine(17, 16, 5, 16);
+            graphics.fillPolygon(new int[]{4, 10, 10}, new int[]{16, 11, 21}, 3);
+        }
+
+        private void drawZeroValues(Graphics2D graphics) {
+            graphics.setColor(BLUE);
+            graphics.drawOval(7, 5, 18, 22);
+            graphics.drawLine(21, 8, 10, 24);
+        }
+
+        private void drawUpdate(Graphics2D graphics) {
+            graphics.setColor(GREEN);
+            graphics.rotate(-Math.PI / 4, 16, 16);
+            graphics.fillRoundRect(14, 5, 5, 19, 3, 3);
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(14, 7, 5, 3);
+            graphics.setColor(ORANGE);
+            graphics.fillPolygon(new int[]{14, 19, 16}, new int[]{24, 24, 29}, 3);
+        }
+
+        private void drawDelete(Graphics2D graphics) {
+            graphics.setColor(ORANGE);
+            graphics.drawRoundRect(8, 10, 16, 18, 2, 2);
+            graphics.drawLine(6, 8, 26, 8);
+            graphics.drawLine(13, 5, 19, 5);
+            graphics.drawLine(13, 14, 13, 24);
+            graphics.drawLine(19, 14, 19, 24);
+        }
+
+        private void drawClear(Graphics2D graphics) {
+            graphics.setColor(GRAY);
+            graphics.fillRoundRect(7, 13, 18, 11, 3, 3);
+            graphics.setColor(ORANGE);
+            graphics.rotate(-Math.PI / 4, 16, 16);
+            graphics.fillRoundRect(14, 5, 6, 21, 3, 3);
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(14, 8, 6, 5);
+        }
+
+        private void drawStart(Graphics2D graphics) {
+            graphics.setColor(GREEN);
+            graphics.fillPolygon(new int[]{9, 9, 25}, new int[]{5, 27, 16}, 3);
+        }
+    }
+
+    private static final class GraphicsButton extends JButton {
+        private String graphicsText;
+
+        private GraphicsButton(String text) {
+            super();
+            setText(text);
+        }
+
+        private GraphicsButton(Icon icon) {
+            super(icon);
+        }
+
+        @Override
+        public void setText(String text) {
+            graphicsText = text;
+            super.setText("");
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            if (graphicsText == null || graphicsText.isEmpty()) {
+                return;
+            }
+
+            Graphics2D graphics2d = (Graphics2D) graphics.create();
+            try {
+                graphics2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                Insets insets = getInsets();
+                int availableWidth = getWidth() - insets.left - insets.right - 8;
+                int availableHeight = getHeight() - insets.top - insets.bottom - 6;
+                if (availableWidth <= 0 || availableHeight <= 0) {
+                    return;
+                }
+
+                Font baseFont = getFont().deriveFont(1f);
+                Font textFont = baseFont;
+                for (int size = availableHeight; size > 1; size--) {
+                    Font candidate = baseFont.deriveFont((float) size);
+                    FontMetrics metrics = graphics2d.getFontMetrics(candidate);
+                    if (metrics.stringWidth(graphicsText) <= availableWidth && metrics.getHeight() <= availableHeight) {
+                        textFont = candidate;
+                        break;
+                    }
+                }
+                FontMetrics metrics = graphics2d.getFontMetrics(textFont);
+                Color textColor = isEnabled() ? getForeground() : UIManager.getColor("Button.disabledText");
+                graphics2d.setColor(textColor == null ? getForeground() : textColor);
+                graphics2d.setFont(textFont);
+                int textX = insets.left + (availableWidth - metrics.stringWidth(graphicsText)) / 2;
+                int textY = insets.top + (availableHeight - metrics.getHeight()) / 2 + metrics.getAscent();
+                graphics2d.drawString(graphicsText, textX, textY);
+            } finally {
+                graphics2d.dispose();
+            }
+        }
+    }
+
+    private static final class InsertionPositionIcon implements Icon {
+        private static final int SIZE = 32;
+        private static final Color LIST_COLOR = new Color(88, 97, 105);
+        private static final Color REFERENCE_COLOR = new Color(118, 219, 160);
+        private static final Color INSERT_COLOR = new Color(232, 132, 45);
+        private final InsertionPosition position;
+
+        private InsertionPositionIcon(InsertionPosition position) {
+            this.position = position;
+        }
+
+        @Override
+        public int getIconWidth() {
+            return SIZE;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return SIZE;
+        }
+
+        @Override
+        public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            Graphics2D graphics2d = (Graphics2D) graphics.create();
+            try {
+                graphics2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                graphics2d.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                graphics2d.setColor(LIST_COLOR);
+                drawListLine(graphics2d, x, y + 7);
+                drawListLine(graphics2d, x, y + 25);
+                graphics2d.setColor(REFERENCE_COLOR);
+                drawListLine(graphics2d, x, y + 16);
+
+                int insertionY = switch (position) {
+                    case BEFORE -> y + 12;
+                    case AFTER -> y + 21;
+                    case END -> y + 29;
+                };
+                graphics2d.setColor(INSERT_COLOR);
+                graphics2d.drawLine(x + 7, insertionY, x + 25, insertionY);
+                graphics2d.setColor(REFERENCE_COLOR);
+                graphics2d.fillPolygon(new int[]{x + 16, x + 12, x + 20},
+                    new int[]{insertionY, insertionY - 5, insertionY - 5}, 3);
+            } finally {
+                graphics2d.dispose();
+            }
+        }
+
+        private void drawListLine(Graphics2D graphics, int x, int y) {
+            graphics.drawLine(x + 7, y, x + 25, y);
+        }
     }
 }

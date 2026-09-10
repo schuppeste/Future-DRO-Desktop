@@ -28,7 +28,7 @@ See [LICENSE](LICENSE) for the project license and the [official GPL-3.0-or-late
 
 The seven-segment display uses DSEG7 Classic by Keshikan, licensed under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL). See `src/main/resources/fonts/DSEG-LICENSE.txt` for the included font license.
 
-The application includes `jSerialComm 2.11.0` for USB serial communication. jSerialComm is licensed under the [GNU Lesser General Public License version 3](https://github.com/Fazecast/jSerialComm/blob/master/LICENSE). The dependency and its platform-specific native libraries are included in the all-platforms JAR.
+The application includes `jSerialComm 2.11.4` for USB serial communication. jSerialComm is licensed under the [GNU Lesser General Public License version 3](https://github.com/Fazecast/jSerialComm/blob/master/LICENSE). The dependency and its platform-specific native libraries are included in the all-platforms JAR.
 
 ## Features
 
@@ -145,8 +145,11 @@ Do not extract the JAR before starting it. The all-platforms JAR contains the Ja
 
 ```bash
 mvn package
-java -cp target/classes com.drodesktop.Main
+java --enable-native-access=ALL-UNNAMED -jar target/dro-java-desktop-1.0.0-beta-allplatforms.jar
 ```
+
+`mvn package` creates the executable all-platforms JAR in `target/`. It contains the application,
+`jSerialComm`, and its platform-specific native libraries.
 
 ### Direct Java compilation
 
