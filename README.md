@@ -45,19 +45,20 @@ The application includes `jSerialComm 2.11.4` for USB serial communication. jSer
 
 ## Screenshots
 
-
-## Hardware Protocol
-
-The ESP32 firmware sends one telemetry line every 50 ms through USB serial at `115200` baud:
-
 ```text
 X=<micrometres>,Y=<micrometres>,Z=<micrometres>
 ```
 <img width="2541" height="1352" alt="touchdro2" src="https://github.com/user-attachments/assets/7664eb6b-80f1-442c-9c74-860ba70ca62b" />
 <img width="2548" height="1347" alt="touchdro1" src="https://github.com/user-attachments/assets/7f7ea2f5-2626-4b95-a466-802072a7bbc8" />
 
+## Disclaimer
 
-Example:
+Use at your own risk. This software is provided without any warranty, including but not limited to warranties of merchantability, fitness for a particular purpose, non-infringement, or uninterrupted operation. The software is provided "as is". The author assumes no liability for any direct, indirect, incidental, consequential, or other damages, including data loss, hardware damage, financial loss, or other consequences arising from the use, installation, malfunction, or misuse of this software.
+## Hardware Protocol
+
+The ESP32 firmware sends one telemetry line every 50 ms through USB serial at `115200` baud:
+
+#Example:
 
 ```text
 X=125000,Y=-4500,Z=30000
@@ -172,3 +173,5 @@ java --enable-native-access=ALL-UNNAMED -cp ".\target\classes;$driver" com.drode
 - `src/main/java/com/drodesktop/DRO.java`: machine and reference-list state.
 - `src/main/java/com/drodesktop/service/SerialDroReceiver.java`: USB serial telemetry receiver.
 - `src/main/java/com/drodesktop/ui/SevenSegmentLabel.java`: scalable seven-segment display label.
+
+#Warranty
