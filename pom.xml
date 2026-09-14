@@ -5,7 +5,7 @@
 
     <groupId>com.drodesktop</groupId>
     <artifactId>dro-java-desktop</artifactId>
-    <version>1.0.0-beta</version>
+    <version>1.0.0-beta6</version>
     <packaging>jar</packaging>
 
     <properties>

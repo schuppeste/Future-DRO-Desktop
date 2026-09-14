@@ -12,6 +12,10 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableColumn;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import javax.swing.event.TableColumnModelEvent;
 import javax.swing.event.TableColumnModelListener;
 import java.awt.*;
@@ -33,6 +37,7 @@ import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.prefs.Preferences;
 import java.util.stream.Stream;
 import java.util.function.IntConsumer;
@@ -44,11 +49,17 @@ public class DROFrame extends JFrame {
         "D/R", "LIST", "KAL", "IST", "DIFF", "EXIT"
     };
     private static final Path REFERENCE_LIST_DIRECTORY = Path.of("referenzlisten");
+    private static final String NUMPAD_VISIBLE_PREFERENCE = "numpadVisible";
+    private static final int DISPLAY_UPDATE_INTERVAL_MS = Math.max(50,
+        Integer.getInteger("dro.displayUpdateIntervalMs", 100));
 
     private final DRO dro = new DRO();
     private final SerialDroReceiver serialReceiver = new SerialDroReceiver();
+    private final AtomicReference<Vector3> latestTelemetryPosition = new AtomicReference<>();
+    private final Timer displayUpdateTimer = new Timer(DISPLAY_UPDATE_INTERVAL_MS, event -> applyLatestTelemetry());
     private final Preferences preferences = Preferences.userNodeForPackage(DROFrame.class);
-    private final DecimalFormat fmt = new DecimalFormat("000.000", DecimalFormatSymbols.getInstance(Locale.US));
+    private final int integerDigitCount;
+    private final DecimalFormat fmt;
 
     private final SevenSegmentLabel xLabel = new SevenSegmentLabel();
     private final SevenSegmentLabel yLabel = new SevenSegmentLabel();
@@ -73,8 +84,12 @@ public class DROFrame extends JFrame {
     private JButton toolCompensationButton;
     private JButton istModeButton;
     private JButton diffModeButton;
+    private JToggleButton numpadToggleButton;
     private String selectedInputAxis = "X";
     private JPanel menuPanel;
+    private JPanel rightPanel;
+    private JPanel lowerRightPanel;
+    private JPanel touchNumpadPanel;
     private JTextField selectedReferenceField;
     private JTextField referenceXField;
     private JTextField referenceYField;
@@ -94,6 +109,7 @@ public class DROFrame extends JFrame {
     private boolean toolCompensationEnabled;
     private double toolRadiusMm;
     private boolean toolValueIsDiameter = true;
+    private boolean numpadVisible = preferences.getBoolean(NUMPAD_VISIBLE_PREFERENCE, true);
     private EmptyCoordinateMode emptyCoordinateMode = EmptyCoordinateMode.FREE;
 
     private enum EmptyCoordinateMode {
@@ -120,13 +136,16 @@ public class DROFrame extends JFrame {
         PREVIOUS, ZERO, UPDATE, DELETE, CLEAR, START
     }
 
-    public DROFrame() {
+    public DROFrame(int integerDigitCount) {
         super(Messages.get("app.title"));
+        this.integerDigitCount = integerDigitCount;
+        fmt = new DecimalFormat("0".repeat(integerDigitCount) + ".000", DecimalFormatSymbols.getInstance(Locale.US));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1100, 700);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(12, 12));
         getContentPane().setBackground(new Color(18, 22, 27));
+        displayUpdateTimer.setCoalesce(true);
 
         JPanel main = new JPanel(new BorderLayout(16, 16));
         main.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
@@ -135,7 +154,7 @@ public class DROFrame extends JFrame {
         JPanel readoutPanel = createReadoutPanel();
         readoutPanel.setPreferredSize(new Dimension(470, 0));
 
-        JPanel rightPanel = new JPanel(new GridLayout(2, 1, 0, 8));
+        rightPanel = new JPanel(new GridLayout(2, 1, 0, 8));
         rightPanel.setBackground(new Color(18, 22, 27));
         rightPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
@@ -145,7 +164,14 @@ public class DROFrame extends JFrame {
         upperPanel.add(menuPanel, BorderLayout.CENTER);
         upperPanel.add(createIstInputPanel(), BorderLayout.SOUTH);
         rightPanel.add(upperPanel);
-        rightPanel.add(createTouchNumpad());
+        lowerRightPanel = new JPanel(new BorderLayout());
+        lowerRightPanel.setBackground(new Color(18, 22, 27));
+        touchNumpadPanel = createTouchNumpad();
+        if (numpadVisible) {
+            lowerRightPanel.add(touchNumpadPanel, BorderLayout.CENTER);
+        }
+        rightPanel.add(lowerRightPanel);
+        updateNumpadToggle();
         setDisplayMode(MainDisplayMode.IST);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, readoutPanel, rightPanel);
@@ -162,7 +188,6 @@ public class DROFrame extends JFrame {
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent event) {
-                updateAxisFontSizes();
                 syncReferenceListDialogBounds();
             }
 
@@ -172,6 +197,9 @@ public class DROFrame extends JFrame {
             }
         });
         refreshDisplay();
+        if (!numpadVisible) {
+            SwingUtilities.invokeLater(this::showReferenceListDialog);
+        }
     }
 
     public void prepareFullscreen() {
@@ -520,6 +548,7 @@ public class DROFrame extends JFrame {
             List<Vector3> points = readReferenceListCsv(file);
             dro.replaceReferenceList(points);
             referenceListIndex = points.isEmpty() ? -1 : 0;
+            refreshReferencePointView();
             updateReferenceListHighlight();
             updateReferenceIndexLabel();
             refreshDisplay();
@@ -669,62 +698,48 @@ public class DROFrame extends JFrame {
     }
 
     private void showSerialConnectionDialog() {
-        String[] ports;
+        SerialDroReceiver.ConnectionPort[] ports;
         try {
-            ports = SerialDroReceiver.availablePortNames();
+            ports = SerialDroReceiver.availableConnectionPorts();
         } catch (Throwable ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this, Messages.get("status.serial.portsError", ex),
                 Messages.get("dialog.connectionError.title"), JOptionPane.ERROR_MESSAGE);
-            ports = new String[0];
+            ports = new SerialDroReceiver.ConnectionPort[0];
         }
-        JComboBox<String> portSelector = new JComboBox<>(ports);
+        JComboBox<SerialDroReceiver.ConnectionPort> portSelector = new JComboBox<>(ports);
         JButton connectButton = new JButton(Messages.get("button.connect"));
         JButton disconnectButton = new JButton(Messages.get("button.disconnect"));
-        JPanel panel = new JPanel(new GridLayout(2, 1, 6, 6));
+        JPanel panel = new JPanel(new GridLayout(3, 1, 6, 6));
+        panel.add(new JLabel(Messages.get("label.connection.devices")));
         panel.add(portSelector);
         JPanel actions = new JPanel(new GridLayout(1, 2, 6, 0));
         actions.add(connectButton);
         actions.add(disconnectButton);
         panel.add(actions);
 
-        JDialog dialog = new JDialog(this, Messages.get("dialog.serial.title"), false);
+        JDialog dialog = new JDialog(this, Messages.get("dialog.connection.title"), false);
         dialog.add(panel);
         dialog.pack();
         dialog.setLocationRelativeTo(this);
         connectButton.addActionListener(e -> {
-            String portName = (String) portSelector.getSelectedItem();
-            if (portName == null) {
+            SerialDroReceiver.ConnectionPort port = (SerialDroReceiver.ConnectionPort) portSelector.getSelectedItem();
+            if (port == null) {
                 statusLabel.setText(Messages.get("status.serial.noPortSelected"));
                 return;
             }
-            if (connectSerialPort(portName)) {
+            if (connectSerialPort(port.systemPortName())) {
                 dialog.dispose();
             }
         });
         disconnectButton.addActionListener(e -> {
             serialReceiver.close();
+            displayUpdateTimer.stop();
+            latestTelemetryPosition.set(null);
             statusLabel.setText(Messages.get("status.serial.disconnected"));
             dialog.dispose();
         });
         dialog.setVisible(true);
-    }
-
-    public void connectFirstAvailableSerialPort() {
-        String[] ports = SerialDroReceiver.availablePortNames();
-        if (ports.length == 0) {
-            statusLabel.setText(Messages.get("status.serial.noPortFound"));
-            return;
-        }
-        String rememberedPort = preferences.get("serialPort", "");
-        if (!rememberedPort.isEmpty()) {
-            for (String port : ports) {
-                if (rememberedPort.equals(port) && connectSerialPort(port)) {
-                    return;
-                }
-            }
-        }
-        connectSerialPort(ports[0]);
     }
 
     public boolean connectToSerialPort(String portName) {
@@ -733,10 +748,9 @@ public class DROFrame extends JFrame {
 
     private boolean connectSerialPort(String portName) {
         try {
-            serialReceiver.connect(portName, position -> SwingUtilities.invokeLater(() -> {
-                dro.setMachinePosition(position);
-                refreshDisplay();
-            }));
+            latestTelemetryPosition.set(null);
+            serialReceiver.connect(portName, latestTelemetryPosition::set);
+            displayUpdateTimer.start();
             preferences.put("serialPort", portName);
             statusLabel.setText(Messages.get("status.serial.connected", portName));
             return true;
@@ -796,7 +810,45 @@ public class DROFrame extends JFrame {
         fields.add(createIstInputField("Y", yKeypadDisplay));
         fields.add(createIstInputField("Z", zKeypadDisplay));
         panel.add(fields, BorderLayout.CENTER);
+
+        numpadToggleButton = new JToggleButton();
+        numpadToggleButton.setFocusPainted(false);
+        numpadToggleButton.setPreferredSize(new Dimension(92, 0));
+        numpadToggleButton.setForeground(new Color(240, 245, 250));
+        numpadToggleButton.setBorder(BorderFactory.createLineBorder(new Color(124, 142, 158), 1));
+        numpadToggleButton.addActionListener(e -> setNumpadVisible(numpadToggleButton.isSelected()));
+        configureFillButtonFont(numpadToggleButton);
+        panel.add(numpadToggleButton, BorderLayout.EAST);
         return panel;
+    }
+
+    private void setNumpadVisible(boolean visible) {
+        numpadVisible = visible;
+        preferences.putBoolean(NUMPAD_VISIBLE_PREFERENCE, visible);
+        lowerRightPanel.removeAll();
+        if (visible) {
+            lowerRightPanel.add(touchNumpadPanel, BorderLayout.CENTER);
+            if (referenceListDialog != null && referenceListDialog.isDisplayable()) {
+                referenceListDialog.dispose();
+            }
+        }
+        updateNumpadToggle();
+        lowerRightPanel.revalidate();
+        lowerRightPanel.repaint();
+        if (!visible) {
+            if (referenceListDialog != null && referenceListDialog.isDisplayable()) {
+                syncReferenceListDialogBounds();
+            } else {
+                SwingUtilities.invokeLater(this::showReferenceListDialog);
+            }
+        }
+    }
+
+    private void updateNumpadToggle() {
+        numpadToggleButton.setSelected(numpadVisible);
+        numpadToggleButton.setText(numpadVisible ? Messages.get("button.numpad.on") : Messages.get("button.numpad.off"));
+        numpadToggleButton.setToolTipText(Messages.get("button.numpad.tooltip"));
+        numpadToggleButton.setBackground(numpadVisible ? new Color(70, 108, 82) : new Color(54, 66, 79));
     }
 
     private JPanel createIstInputField(String axis, JTextField field) {
@@ -883,7 +935,14 @@ public class DROFrame extends JFrame {
         actionXLabel.setText(formatActionValue(difference.x));
         actionYLabel.setText(formatActionValue(difference.y));
         actionZLabel.setText(formatActionValue(difference.z));
-        updateAxisFontSizes();
+    }
+
+    private void applyLatestTelemetry() {
+        Vector3 position = latestTelemetryPosition.getAndSet(null);
+        if (position != null) {
+            dro.setMachinePosition(position);
+            refreshDisplay();
+        }
     }
 
     private String formatActionValue(double value) {
@@ -1041,6 +1100,12 @@ public class DROFrame extends JFrame {
         xField.setFont(referenceInputFont);
         yField.setFont(referenceInputFont);
         zField.setFont(referenceInputFont);
+        configureReferenceCoordinateField(xField);
+        configureReferenceCoordinateField(yField);
+        configureReferenceCoordinateField(zField);
+        xSelectButton.setFocusable(false);
+        ySelectButton.setFocusable(false);
+        zSelectButton.setFocusable(false);
         xSelectButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
         ySelectButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
         zSelectButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
@@ -1082,6 +1147,8 @@ public class DROFrame extends JFrame {
 
         JTableHeader pointTableHeader = pointTable.getTableHeader();
         pointTableHeader.setLayout(null);
+        pointTableHeader.setFocusable(false);
+        pointTableHeader.setFocusTraversalKeysEnabled(false);
         pointTableHeader.setReorderingAllowed(false);
         pointTableHeader.setResizingAllowed(false);
         pointTableHeader.setBackground(new Color(23, 29, 36));
@@ -1320,8 +1387,8 @@ public class DROFrame extends JFrame {
                 clearReferenceEditorState();
             }
         });
-        dialog.setSize(menuPanel.getSize());
-        dialog.setLocation(menuPanel.getLocationOnScreen());
+        dialog.setSize(referenceListDialogSize());
+        dialog.setLocation(referenceListDialogLocation());
         dialog.setVisible(true);
         updateReferenceListHighlight();
         updateReferenceIndexLabel();
@@ -1330,9 +1397,17 @@ public class DROFrame extends JFrame {
 
     private void syncReferenceListDialogBounds() {
         if (referenceListDialog != null && referenceListDialog.isVisible() && menuPanel.isShowing()) {
-            referenceListDialog.setSize(menuPanel.getSize());
-            referenceListDialog.setLocation(menuPanel.getLocationOnScreen());
+            referenceListDialog.setSize(referenceListDialogSize());
+            referenceListDialog.setLocation(referenceListDialogLocation());
         }
+    }
+
+    private Dimension referenceListDialogSize() {
+        return numpadVisible ? menuPanel.getSize() : lowerRightPanel.getSize();
+    }
+
+    private Point referenceListDialogLocation() {
+        return numpadVisible ? menuPanel.getLocationOnScreen() : lowerRightPanel.getLocationOnScreen();
     }
 
     private JPanel createReferenceHeaderCell(JComponent caption, JTextField field) {
@@ -1341,6 +1416,21 @@ public class DROFrame extends JFrame {
         cell.add(caption, BorderLayout.NORTH);
         cell.add(field, BorderLayout.CENTER);
         return cell;
+    }
+
+    private void configureReferenceCoordinateField(JTextField field) {
+        ((AbstractDocument) field.getDocument()).setDocumentFilter(new DocumentFilter() {
+            @Override
+            public void replace(FilterBypass filterBypass, int offset, int length, String text, AttributeSet attributes)
+                    throws BadLocationException {
+                String current = filterBypass.getDocument().getText(0, filterBypass.getDocument().getLength());
+                String replacement = text == null ? "" : text;
+                String candidate = current.substring(0, offset) + replacement + current.substring(offset + length);
+                if (candidate.matches("-?\\d{0," + integerDigitCount + "}([.,]\\d{0,3})?")) {
+                    filterBypass.replace(offset, length, replacement, attributes);
+                }
+            }
+        });
     }
 
     private JButton createEmptyCoordinateSubmitButton(String icon, String tooltip, EmptyCoordinateMode mode, Runnable addAction) {
@@ -1467,7 +1557,7 @@ public class DROFrame extends JFrame {
         }
     }
 
-    private void configureFillButtonFont(JButton button) {
+    private void configureFillButtonFont(AbstractButton button) {
         button.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent event) {
@@ -1530,6 +1620,21 @@ public class DROFrame extends JFrame {
         }
     }
 
+    private void refreshReferencePointView() {
+        if (referencePointView == null) {
+            return;
+        }
+        DefaultTableModel model = (DefaultTableModel) referencePointView.getModel();
+        model.setRowCount(0);
+        List<Vector3> points = dro.getReferenceList();
+        for (int index = 0; index < points.size(); index++) {
+            model.addRow(referenceTableRow(index, points.get(index)));
+        }
+        if (points.isEmpty()) {
+            referencePointView.clearSelection();
+        }
+    }
+
     private void browseReferencePoint(int direction) {
         List<Vector3> points = dro.getReferenceList();
         if (points.isEmpty() || referenceListIndex < 0) {
@@ -1571,20 +1676,6 @@ public class DROFrame extends JFrame {
             diffModeButton.setBackground(mode == MainDisplayMode.DIFF ? activeColor : inactiveColor);
         }
         refreshDisplay();
-    }
-
-    private void updateAxisFontSizes() {
-        int panelWidth = getContentPane().getWidth();
-        int base = Math.max(2, Math.min(4, panelWidth / 280));
-        xLabel.setDisplayScale(base);
-        yLabel.setDisplayScale(base);
-        zLabel.setDisplayScale(base);
-        actionXLabel.setDisplayScale(base);
-        actionYLabel.setDisplayScale(base);
-        actionZLabel.setDisplayScale(base);
-        istXLabel.setDisplayScale(base);
-        istYLabel.setDisplayScale(base);
-        istZLabel.setDisplayScale(base);
     }
 
     private String fmt(double value) {

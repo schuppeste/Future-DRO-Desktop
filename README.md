@@ -45,18 +45,15 @@ The application includes `jSerialComm 2.11.4` for USB serial communication. jSer
 
 ## Screenshots
 
-```text
-X=<micrometres>,Y=<micrometres>,Z=<micrometres>
-```
-<img width="2541" height="1352" alt="touchdro2" src="https://github.com/user-attachments/assets/7664eb6b-80f1-442c-9c74-860ba70ca62b" />
-<img width="2548" height="1347" alt="touchdro1" src="https://github.com/user-attachments/assets/7f7ea2f5-2626-4b95-a466-802072a7bbc8" />
+<img width="3814" height="1994" alt="Future_DRO_Desktop2" src="https://github.com/user-attachments/assets/8e406e0d-b2ea-4c32-ad21-49d294d2c3f0" />
+<img width="3810" height="1984" alt="Future DRO Desktop" src="https://github.com/user-attachments/assets/cdf79f23-6692-4a95-a86b-1e58ff5949ed" />
 
 ## Disclaimer
 
 Use at your own risk. This software is provided without any warranty, including but not limited to warranties of merchantability, fitness for a particular purpose, non-infringement, or uninterrupted operation. The software is provided "as is". The author assumes no liability for any direct, indirect, incidental, consequential, or other damages, including data loss, hardware damage, financial loss, or other consequences arising from the use, installation, malfunction, or misuse of this software.
 ## Hardware Protocol
 
-The ESP32 firmware sends one telemetry line every 50 ms through USB serial at `115200` baud:
+The ESP32 firmware sends one telemetry line every 50 ms through USB serial or Bluetooth Classic SPP at `115200` baud:
 
 #Example:
 
@@ -64,7 +61,20 @@ The ESP32 firmware sends one telemetry line every 50 ms through USB serial at `1
 X=125000,Y=-4500,Z=30000
 ```
 
-The desktop application converts these values to millimetres before displaying them. Use the `SER` menu item to select and connect to the ESP32 COM port.
+The desktop application converts these values to millimetres before displaying them. Use the `SER` menu item to select the ESP32. The Device Connector lists USB serial ports and paired Bluetooth SPP ports together, clearly labeled by connection type.
+
+### Raspberry Pi Bluetooth SPP
+
+On Raspberry Pi OS, pair and trust the ESP32 using BlueZ, then create an RFCOMM serial device. The Device Connector recognizes `/dev/rfcomm*` as Bluetooth SPP and continues to list USB serial devices such as `/dev/ttyUSB0`.
+
+```bash
+sudo apt install bluez
+bluetoothctl
+# In bluetoothctl: power on, scan on, pair <ESP32-MAC>, trust <ESP32-MAC>, quit
+sudo rfcomm connect hci0 <ESP32-MAC> 1
+```
+
+Keep `rfcomm connect` running while using the DRO. It creates `/dev/rfcomm0`; select it from `SER`. The user running the application needs permission to access the device.
 
 ## Reference Lists
 
@@ -81,8 +91,8 @@ Use the `LIST` menu item to manage multiple files without a system file browser.
 ## Requirements
 
 - Java 17 or later.
-- `jSerialComm 2.11.0` for USB serial communication.
-- Optional: a TouchDroid-compatible ESP32 device connected through USB.
+- `jSerialComm 2.11.0` for USB serial and Bluetooth SPP communication.
+- Optional: a TouchDroid-compatible ESP32 device connected through USB or paired by Bluetooth SPP.
 
 The dependency is declared in `pom.xml`. For direct compilation, place `jSerialComm-2.11.0.jar` in `lib/`.
 
@@ -95,13 +105,13 @@ Use the versioned all-platforms JAR from the `target/` directory. Java 17 or lat
 Windows PowerShell:
 
 ```powershell
-java --enable-native-access=ALL-UNNAMED -jar .\target\dro-java-desktop-1.0.0-beta-allplatforms.jar
+java --enable-native-access=ALL-UNNAMED -jar .\target\dro-java-desktop-1.0.0-beta6-allplatforms.jar
 ```
 
 Linux and macOS:
 
 ```bash
-java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta-allplatforms.jar
+java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta6-allplatforms.jar
 ```
 
 ### Program arguments
@@ -111,22 +121,33 @@ The application supports these startup arguments:
 - `--fullscreen`: start the application in fullscreen mode.
 - `--lang=de` or `--lang de`: select the user interface language, for example `de` or `en`.
 - `--port=COM3` or `--port COM3`: connect directly to the specified serial port. Use the port name shown by the operating system, such as `COM3` on Windows or `/dev/ttyUSB0` on Linux.
+- `--integer-digits=3` or `--integer-digits=4`: reserve three or four fixed integer-digit placeholders in the DRO display and limit reference-list coordinate entry to that width. The default is `3`; use `4` for values up to `9999.999` without a display-size change.
 
 Example for Windows with fullscreen mode, German language, COM3, and serial native access enabled:
 
 ```powershell
-java --enable-native-access=ALL-UNNAMED -jar .\target\dro-java-desktop-1.0.0-beta-allplatforms.jar --fullscreen --lang=de --port=COM3
+java --enable-native-access=ALL-UNNAMED -jar .\target\dro-java-desktop-1.0.0-beta6-allplatforms.jar --fullscreen --lang=de --port=COM3 --integer-digits=4
 ```
 
 Equivalent example for Linux or macOS:
 
 ```bash
-java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta-allplatforms.jar --fullscreen --lang=en --port=/dev/ttyUSB0
+java --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta6-allplatforms.jar --fullscreen --lang=en --port=/dev/ttyUSB0
 ```
 
 The `--enable-native-access=ALL-UNNAMED` option allows `jSerialComm` to load its native serial-port library without native-access warnings on newer Java versions. If the downloaded JAR has a different version in its filename, replace the filename in the command accordingly.
 
 Do not extract the JAR before starting it. The all-platforms JAR contains the Java classes and the native `jSerialComm` libraries for the supported operating systems and CPU architectures.
+
+### Low-power systems
+
+The DRO display updates every 100 ms by default. On a Raspberry Pi 3A+ or other low-power system, use a longer interval to keep the interface responsive:
+
+```bash
+java -Ddro.displayUpdateIntervalMs=250 --enable-native-access=ALL-UNNAMED -jar ./target/dro-java-desktop-1.0.0-beta6-allplatforms.jar --integer-digits=3
+```
+
+The interval is specified in milliseconds and cannot be lower than `50`.
 
 ### Serial access troubleshooting
 
@@ -146,7 +167,7 @@ Do not extract the JAR before starting it. The all-platforms JAR contains the Ja
 
 ```bash
 mvn package
-java --enable-native-access=ALL-UNNAMED -jar target/dro-java-desktop-1.0.0-beta-allplatforms.jar
+java --enable-native-access=ALL-UNNAMED -jar target/dro-java-desktop-1.0.0-beta6-allplatforms.jar
 ```
 
 `mvn package` creates the executable all-platforms JAR in `target/`. It contains the application,
