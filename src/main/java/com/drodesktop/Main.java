@@ -7,13 +7,14 @@ import javax.swing.SwingUtilities;
 public class Main {
     public static void main(String[] args) {
         Messages.setLanguage(findLanguageArgument(args));
+        int integerDigitCount = findIntegerDigitCountArgument(args);
         Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
             ex.printStackTrace();
             javax.swing.JOptionPane.showMessageDialog(null, ex.toString(), "Unerwarteter Fehler",
                 javax.swing.JOptionPane.ERROR_MESSAGE);
         });
         SwingUtilities.invokeLater(() -> {
-            DROFrame frame = new DROFrame();
+            DROFrame frame = new DROFrame(integerDigitCount);
             boolean fullscreen = hasFullscreenArgument(args);
             if (fullscreen) {
                 frame.prepareFullscreen();
@@ -25,8 +26,6 @@ public class Main {
             String portArgument = findPortArgument(args);
             if (portArgument != null) {
                 frame.connectToSerialPort(portArgument);
-            } else {
-                frame.connectFirstAvailableSerialPort();
             }
         });
     }
@@ -55,6 +54,23 @@ public class Main {
             }
         }
         return null;
+    }
+
+    private static int findIntegerDigitCountArgument(String[] args) {
+        for (int index = 0; index < args.length; index++) {
+            String arg = args[index];
+            String value = null;
+            if (arg.regionMatches(true, 0, "--integer-digits=", 0, 17)) {
+                value = arg.substring(17);
+            } else if (("--integer-digits".equalsIgnoreCase(arg) || "-integer-digits".equalsIgnoreCase(arg))
+                    && index + 1 < args.length) {
+                value = args[index + 1];
+            }
+            if ("3".equals(value) || "4".equals(value)) {
+                return Integer.parseInt(value);
+            }
+        }
+        return 3;
     }
 
     private static boolean hasFullscreenArgument(String[] args) {

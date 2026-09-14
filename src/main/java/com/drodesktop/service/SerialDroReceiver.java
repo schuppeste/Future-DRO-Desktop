@@ -5,9 +5,12 @@ import com.fazecast.jSerialComm.SerialPort;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 public final class SerialDroReceiver implements AutoCloseable {
+    private static final boolean DEBUG_SERIAL = Boolean.getBoolean("dro.debugSerial");
+
     private SerialPort port;
     private Thread receiverThread;
     private volatile boolean receiving;
@@ -19,13 +22,30 @@ public final class SerialDroReceiver implements AutoCloseable {
     private double lastY;
     private double lastZ;
 
-    public static String[] availablePortNames() {
-        SerialPort[] ports = SerialPort.getCommPorts();
-        String[] names = new String[ports.length];
-        for (int index = 0; index < ports.length; index++) {
-            names[index] = ports[index].getSystemPortName();
+    public record ConnectionPort(String systemPortName, String displayName, boolean bluetoothSpp) {
+        @Override
+        public String toString() {
+            String connectionType = bluetoothSpp ? "Bluetooth SPP" : "USB/Serial";
+            return connectionType + ": " + displayName + " (" + systemPortName + ")";
         }
-        return names;
+    }
+
+    public static ConnectionPort[] availableConnectionPorts() {
+        SerialPort[] ports = SerialPort.getCommPorts();
+        ConnectionPort[] connectionPorts = new ConnectionPort[ports.length];
+        for (int index = 0; index < ports.length; index++) {
+            SerialPort candidate = ports[index];
+            String displayName = candidate.getDescriptivePortName();
+            if (displayName == null || displayName.isBlank()) {
+                displayName = candidate.getPortDescription();
+            }
+            if (displayName == null || displayName.isBlank()) {
+                displayName = candidate.getSystemPortName();
+            }
+            connectionPorts[index] = new ConnectionPort(
+                candidate.getSystemPortName(), displayName, isBluetoothSppPort(candidate));
+        }
+        return connectionPorts;
     }
 
     public synchronized void connect(String portName, Consumer<Vector3> telemetryHandler) throws IOException {
@@ -43,6 +63,14 @@ public final class SerialDroReceiver implements AutoCloseable {
         receiverThread = new Thread(() -> receiveLoop(telemetryHandler), "dro-serial-receiver");
         receiverThread.setDaemon(true);
         receiverThread.start();
+    }
+
+    private static boolean isBluetoothSppPort(SerialPort port) {
+        String details = String.join(" ",
+            port.getSystemPortName(),
+            port.getDescriptivePortName(),
+            port.getPortDescription()).toLowerCase(Locale.ROOT);
+        return details.contains("bluetooth") || details.contains("rfcomm");
     }
 
     public synchronized boolean isConnected() {
@@ -76,8 +104,9 @@ public final class SerialDroReceiver implements AutoCloseable {
                 }
                 if (count > 0) {
                     String chunk = new String(buffer, 0, count, StandardCharsets.US_ASCII);
-                    System.out.print("[serial-raw] ");
-                    System.out.println(chunk);
+                    if (DEBUG_SERIAL) {
+                        System.out.println("[serial-raw] " + chunk);
+                    }
                     parseChunk(chunk, telemetryHandler);
                 }
             }
